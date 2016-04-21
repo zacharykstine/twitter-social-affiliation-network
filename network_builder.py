@@ -171,7 +171,7 @@ def get_statuses(user_list, num_hshtgs, status_limit, api):
             # add status info to DB (skip for proof-of-concept) *************************[INCOMPLETE]
             ###################################################
             
-            if len(hshtg_dict) >= num_hshtgs:
+            if len(hshtg_dict) >= num_hshtgs or user_total_statuses >= status_limit:
                 break
 
         # Create user tuple and append to hshtg_usage[]
@@ -227,19 +227,21 @@ def create_network(hshtg_usage, candidate):
 * Note: -Original graph will be affected so long as the supplied
 *   graph argument is never reassigned (due to how Python
 *   passes values).
-*       -Latitude values are given for Gephi layout purposes.
+*       -Latitude values are given for Gephi layout purposes. Might need to be DOUBLE TYPE.
 ******************************************************"""
 def append_to_graph(G, hshtg_usage, candidate):
-    # Add candidate node (mostly for visual purposes)
-    G.add_node(candidate, node_type='candidate', latitude=44)
+    
+    # Add candidate node (mostly for visual purposes) -94.58<--92.43->-90.18
+    G.add_node(candidate, node_type='candidate')
 
     for user, hash_dict in hshtg_usage:
+        user_label = '@' + user
         
         # Create user node
-        G.add_node(user, node_type='user', candidate=candidate, latitude=34)
+        G.add_node(user_label, node_type='user', candidate=candidate)
         
         # Connect candidate node to user node
-        G.add_edge(candidate, user)
+        G.add_edge(candidate, user_label)
         
         # Create node for hashtag if it doesn't already exist
         for hshtg in hash_dict:
@@ -247,9 +249,70 @@ def append_to_graph(G, hshtg_usage, candidate):
             hash_label = '#' + hshtg
             
             # Note: duplicate nodes cannot be added, so no problem if hshtg already exists in graph
-            G.add_node(hash_label, node_type='hashtag', latitude=20)
-            G.add_edge(user, hshtg, weight=count)
+            G.add_node(hash_label, node_type='hashtag')
+            G.add_edge(user_label, hash_label, weight=count)
 
+def geo_format(G):
+    center = -92.5
+    
+    candidate_lat = 44.0
+    candidate_spacing = 5.0
+    
+    user_lat = 34.0
+    user_spacing = 2
+    
+    hash_lat = 20.0
+    hash_spacing = 2
+    
+
+    candidate_count = 0
+    user_count = 0
+    hash_count = 0
+
+    for label, data in G.nodes(data=True):
+        if data['node_type'] == 'candidate':
+            candidate_count += 1
+        elif data['node_type'] == 'user':
+            user_count += 1
+        elif data['node_type'] == 'hashtag':
+            hash_count += 1
+        else:
+            print("Error in geo_format(G): encountered node with unrecognized node type.")
+    
+    candidate_offset = get_offset(candidate_count, candidate_spacing)
+    user_offset = get_offset(user_count, user_spacing)
+    hash_offset = get_offset(hash_count, hash_spacing)
+    # Might not need the range, but just the leftmost (or rightmost) starting point ***
+    #candidate_lon_range = get_lon_range(center, candidate_offset)
+    candidate_lon = center - candidate_offset
+    #user_lon_range = get_lon_range(center, user_offset)
+    user_lon = center - user_offset
+    #hash_lon_range = get_lon_range(center, hash_offset)
+    hash_lon = center - hash_offset
+
+    for label, data in G.nodes(data=True):
+        if data['node_type'] == 'candidate':
+            data['latitude'] = candidate_lat
+            data['longitude'] = candidate_lon
+            candidate_lon += candidate_spacing
+        elif data['node_type'] == 'user':
+            candidate_label = data['candidate']
+            data['latitude'] = user_lat
+            data['longitude'] = user_lon
+            user_lon += user_spacing
+            data['candidate'] = candidate_label
+        elif data['node_type'] == 'hashtag':
+            data['latitude'] = hash_lat
+            data['longitude'] = hash_lon
+            hash_lon += hash_spacing
+        else:
+            print("Unrecognized node type while assigning coordinates in geo_format(G).")
+    
+def get_offset(count, spacing):
+    return (count / 2) * spacing
+
+def get_lon_range(center, offset):
+    return [(center - offset), (center + offset)]
 
 
 """******************************************************
@@ -261,6 +324,21 @@ def draw_graph(G):
     d = nx.degree(G)
     nx.draw_spectral(G, nodelist=d.keys(), node_size=[v * 100 for v in d.values()])
     plt.show()
+
+"""******************************************************
+* Function: count_unique_hashtags()
+* Input: Hashtag usage dictionary.
+* Output: Count of how many unique hashtags were present
+*    in input.
+******************************************************"""
+def count_unique_hashtags(hash_usage):
+    count = 0
+    unique = []
+    for user, hashtags in hash_usage:
+        for h in hashtags:
+            if h not in unique:
+                unique.append(h)
+                count += 1
     
 
 """******************************************************
@@ -299,7 +377,7 @@ def print_hshtg_usage(hshtg_usage):
             print("  #" + hshtg + " :: " + str(hash_count))
 
 def write_to_graphml(G):
-    path = "twitter_graph" + ".graphml"
+    path = "republican_test2" + ".graphml"
     nx.write_graphml(G, path, encoding='utf-8', prettyprint=True)
 
             
@@ -369,9 +447,10 @@ def main():
                                'Cruz': cruz_t,
                                'Kasich': kasich_t}
     
-    unique_users = 100 # increase as much as possible
-    hshtgs_per_user = 100 #1000
-    status_limit = 100 #5000
+    unique_users = 50 # increase as much as possible
+    hshtgs_per_user = 1 #1000
+    status_limit = 80 #5000
+    num_candidates = len(candidates_and_hashtags)
 
     # Create graph, iterate through each candidate, and add their results to the graph
     graph = nx.DiGraph()
@@ -393,6 +472,8 @@ def main():
 
         print(candidate + " is finished.\n\n\n")
 
+    # Format geo coordinates of nodes
+    geo_format(graph)
     # Export Graph to graphML
     write_to_graphml(graph)
 
