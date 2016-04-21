@@ -1,7 +1,7 @@
 """###################################################################################################
 # Author: Zach Stine
 # Created: 2016-04-16
-# Last Modified: 2016-04-20
+# Last Modified: 2016-04-21
 #
 # Description: Mines the necessary data from Twitter in order to construct a social-affiliation 
 # network based on 2016 U.S. presidential candidate supporters.
@@ -232,13 +232,13 @@ def create_network(hshtg_usage, candidate):
 def append_to_graph(G, hshtg_usage, candidate):
     
     # Add candidate node (mostly for visual purposes) -94.58<--92.43->-90.18
-    G.add_node(candidate, node_type='candidate')
+    G.add_node(candidate, label=candidate, node_type='candidate', supporting='n/a')
 
     for user, hash_dict in hshtg_usage:
         user_label = '@' + user
         
         # Create user node
-        G.add_node(user_label, node_type='user', candidate=candidate)
+        G.add_node(user_label, label=user_label, node_type='user', supporting=candidate)
         
         # Connect candidate node to user node
         G.add_edge(candidate, user_label)
@@ -249,7 +249,7 @@ def append_to_graph(G, hshtg_usage, candidate):
             hash_label = '#' + hshtg
             
             # Note: duplicate nodes cannot be added, so no problem if hshtg already exists in graph
-            G.add_node(hash_label, node_type='hashtag')
+            G.add_node(hash_label, label=hash_label, node_type='hashtag', supporting='n/a')
             G.add_edge(user_label, hash_label, weight=count)
 
 def geo_format(G):
@@ -259,10 +259,10 @@ def geo_format(G):
     candidate_spacing = 5.0
     
     user_lat = 34.0
-    user_spacing = 2
+    user_spacing = 1.5
     
     hash_lat = 20.0
-    hash_spacing = 2
+    hash_spacing = 1.5
     
 
     candidate_count = 0
@@ -292,18 +292,18 @@ def geo_format(G):
 
     for label, data in G.nodes(data=True):
         if data['node_type'] == 'candidate':
-            data['latitude'] = candidate_lat
-            data['longitude'] = candidate_lon
+            data['latitude'] = float(candidate_lat)
+            data['longitude'] = float(candidate_lon)
             candidate_lon += candidate_spacing
         elif data['node_type'] == 'user':
-            candidate_label = data['candidate']
-            data['latitude'] = user_lat
-            data['longitude'] = user_lon
+            #candidate_label = data['candidate']
+            data['latitude'] = float(user_lat)
+            data['longitude'] = float(user_lon)
             user_lon += user_spacing
-            data['candidate'] = candidate_label
+            #data['candidate'] = candidate_label
         elif data['node_type'] == 'hashtag':
-            data['latitude'] = hash_lat
-            data['longitude'] = hash_lon
+            data['latitude'] = float(hash_lat)
+            data['longitude'] = float(hash_lon)
             hash_lon += hash_spacing
         else:
             print("Unrecognized node type while assigning coordinates in geo_format(G).")
@@ -313,6 +313,26 @@ def get_offset(count, spacing):
 
 def get_lon_range(center, offset):
     return [(center - offset), (center + offset)]
+
+def append_to_graph_no_geo(G, hshtg_usage, candidate):
+    
+    # No candidate nodes needed.
+    #G.add_node(candidate, label=candidate, node_type='candidate', supporting='n/a')
+
+    for user, hash_dict in hshtg_usage:
+        user_label = '@' + user
+        
+        # Create user node
+        G.add_node(user_label, label=user_label, node_type=candidate)
+        
+        # Create node for hashtag if it doesn't already exist
+        for hshtg in hash_dict:
+            count = hash_dict[hshtg]
+            hash_label = '#' + hshtg
+            
+            # Note: duplicate nodes cannot be added, so no problem if hshtg already exists in graph
+            G.add_node(hash_label, label=hash_label, node_type='hashtag')
+            G.add_edge(user_label, hash_label, weight=count)
 
 
 """******************************************************
@@ -438,19 +458,16 @@ def main():
     clinton_t = ['Hillary2016']
     
     # User either set of tags above for candidates_and_hashtags dictionary
-    """candidates_and_hashtags = {'Trump': trump_t,
+    candidates_and_hashtags = {'Trump': trump_t,
                                'Cruz': cruz_t,
                                'Kasich': kasich_t,
                                'Sanders': bernie_t,
-                               'Clinton': clinton_t}"""
-    candidates_and_hashtags = {'Trump': trump_t,
-                               'Cruz': cruz_t,
-                               'Kasich': kasich_t}
+                               'Clinton': clinton_t}
     
-    unique_users = 50 # increase as much as possible
-    hshtgs_per_user = 1 #1000
-    status_limit = 80 #5000
-    num_candidates = len(candidates_and_hashtags)
+    unique_users = 1000 # increase as much as possible
+    hshtgs_per_user = 500 #1000
+    status_limit = 100 #5000
+    num_candidates = len(candidates_and_hashtags) #Is this being used anywhere?
 
     # Create graph, iterate through each candidate, and add their results to the graph
     graph = nx.DiGraph()
@@ -468,12 +485,21 @@ def main():
         hashtag_usage = get_statuses(supporters, hshtgs_per_user, status_limit, api)
         
         # append results to graph
-        append_to_graph(graph, hashtag_usage, candidate)
+        #append_to_graph(graph, hashtag_usage, candidate)
+        append_to_graph_no_geo(graph, hashtag_usage, candidate)
 
         print(candidate + " is finished.\n\n\n")
 
     # Format geo coordinates of nodes
-    geo_format(graph)
+    #geo_format(graph)
+
+    """
+    for label, data in graph.nodes(data=True):
+        print(label)
+        print(data)
+        print('\n')
+    """
+        
     # Export Graph to graphML
     write_to_graphml(graph)
 
